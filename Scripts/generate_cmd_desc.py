@@ -217,18 +217,18 @@ def generate_header_file(
             processed.add(group_name)
 
     # Help function declarations
-    help_declarations = ["void print_root_help(void);"]
+    help_declarations = ["void print_root_help(RCore *core);"]
 
     for cmd in simple_commands:
         if 'cname' in cmd:
-            help_declarations.append(f"void print_{cmd['cname']}_help(void);")
+            help_declarations.append(f"void print_{cmd['cname']}_help(RCore *core);")
 
     for group_name in command_groups:
         group_cname = camel_to_snake(group_name)
-        help_declarations.append(f"void print_{group_cname}_group_help(void);")
+        help_declarations.append(f"void print_{group_cname}_group_help(RCore *core);")
 
         if group_name in dual_role_commands:
-            help_declarations.append(f"void print_{group_cname}_dual_help(void);")
+            help_declarations.append(f"void print_{group_cname}_dual_help(RCore *core);")
 
     # Construct header content
     header_content = f"""/**
@@ -242,6 +242,16 @@ def generate_header_file(
 #define RADARE_CMD_DESC_H
 
 #include <r_core.h>
+#include <r_cmd.h>
+
+/* Compatibility typedefs for command status */
+#ifndef R_CMD_STATUS_DEFINED
+#define R_CMD_STATUS_DEFINED 1
+#define RCmdStatus bool
+#define R_CMD_STATUS_OK true
+#define R_CMD_STATUS_WRONG_ARGS false
+#define R_CMD_STATUS_INVALID false
+#endif
 
 /* Global command dispatcher - entry point for all commands */
 R_API RCmdStatus reai_global_command_dispatcher(RCore* core, const char* command);
@@ -292,9 +302,9 @@ def generate_help_implementations(
     implementations.append("""/**
  * Print root level help for all commands
  */
-void print_root_help(void) {
-    r_cons_println("RevEngAI Radare2 Plugin - Command Help");
-    r_cons_println("=======================================");""")
+void print_root_help(RCore *core) {
+    r_cons_println(core->cons, "RevEngAI Radare2 Plugin - Command Help");
+    r_cons_println(core->cons, "=======================================");""")
 
     for group_name in command_groups:
         group_info = command_groups[group_name]
@@ -308,12 +318,12 @@ void print_root_help(void) {
                 break
 
         group_summary_escaped = group_summary.replace('"', '\\"')
-        implementations[-1] += f'\n    r_cons_println("{group_name:<8} - {group_summary_escaped}");'
+        implementations[-1] += f'\n    r_cons_println(core->cons, "{group_name:<8} - {group_summary_escaped}");'
 
     implementations[-1] += '''
-    r_cons_println("");
-    r_cons_println("Use <command>?  to get help for a group");
-    r_cons_println("Use <command>\\?\\? to get help for a specific command");
+    r_cons_println(core->cons, "");
+    r_cons_println(core->cons, "Use <command>?  to get help for a group");
+    r_cons_println(core->cons, "Use <command>\\?\\? to get help for a specific command");
 }
 '''
 
@@ -341,35 +351,35 @@ void print_root_help(void) {
         help_impl = f"""/**
  * Print help for {cmd_name} command
  */
-void print_{cname}_help(void) {{
-    r_cons_println("{usage_line}");"""
+void print_{cname}_help(RCore *core) {{
+    r_cons_println(core->cons, "{usage_line}");"""
 
         # Process all detail sections
         for detail in cmd.get('details', []):
             detail_name = detail.get('name')
             if detail_name == 'Notes':
-                help_impl += '\n    r_cons_println("\\nNotes:");'
+                help_impl += '\n    r_cons_println(core->cons, "\\nNotes:");'
                 for entry in detail.get('entries', []):
                     text = entry.get('text', '').replace('"', '\\"')
-                    help_impl += f'\n    r_cons_println("  {text}");'
+                    help_impl += f'\n    r_cons_println(core->cons, "  {text}");'
             elif detail_name == 'Examples':
-                help_impl += '\n    r_cons_println("\\nExamples:");'
+                help_impl += '\n    r_cons_println(core->cons, "\\nExamples:");'
                 for entry in detail.get('entries', []):
                     text = entry.get('text', '').replace('"', '\\"')
                     comment = entry.get('comment', '').replace('"', '\\"')
-                    help_impl += f'\n    r_cons_println("{text}  # {comment}");'
+                    help_impl += f'\n    r_cons_println(core->cons, "{text}  # {comment}");'
             elif detail_name == 'Usage':
-                help_impl += '\n    r_cons_println("\\nUsage:");'
+                help_impl += '\n    r_cons_println(core->cons, "\\nUsage:");'
                 for entry in detail.get('entries', []):
                     text = entry.get('text', '').replace('"', '\\"')
                     comment = entry.get('comment', '').replace('"', '\\"')
-                    help_impl += f'\n    r_cons_println("| {text:<15} # {comment}");'
+                    help_impl += f'\n    r_cons_println(core->cons, "| {text:<15} # {comment}");'
             elif detail_name == 'Controls':
-                help_impl += '\n    r_cons_println("\\nControls:");'
+                help_impl += '\n    r_cons_println(core->cons, "\\nControls:");'
                 for entry in detail.get('entries', []):
                     text = entry.get('text', '').replace('"', '\\"')
                     comment = entry.get('comment', '').replace('"', '\\"')
-                    help_impl += f'\n    r_cons_println("| {text:<6} # {comment}");'
+                    help_impl += f'\n    r_cons_println(core->cons, "| {text:<6} # {comment}");'
 
         help_impl += '\n}\n'
         implementations.append(help_impl)
@@ -382,9 +392,9 @@ void print_{cname}_help(void) {{
         help_impl = f"""/**
  * Print help for {group_name} command group
  */
-void print_{group_cname}_group_help(void) {{
-    r_cons_println("{group_name} Command Group");
-    r_cons_println("{'=' * (len(group_name) + 14)}");"""
+void print_{group_cname}_group_help(RCore *core) {{
+    r_cons_println(core->cons, "{group_name} Command Group");
+    r_cons_println(core->cons, "{'=' * (len(group_name) + 14)}");"""
 
         # Filter out subcommands of nested groups
         nested_prefixes = [
@@ -395,11 +405,11 @@ void print_{group_cname}_group_help(void) {{
             cmd_name = cmd.get('name', cmd.get('group', ''))
             summary = cmd.get('summary', '').replace('"', '\\"')
             if not any(cmd_name.startswith(prefix) and len(cmd_name) > len(prefix) for prefix in nested_prefixes):
-                help_impl += f'\n    r_cons_println("{cmd_name:<12} - {summary}");'
+                help_impl += f'\n    r_cons_println(core->cons, "{cmd_name:<12} - {summary}");'
 
         help_impl += '''
-    r_cons_println("");
-    r_cons_println("Use <command>? to get detailed help for a specific command");
+    r_cons_println(core->cons, "");
+    r_cons_println(core->cons, "Use <command>? to get detailed help for a specific command");
 }
 '''
         implementations.append(help_impl)
@@ -414,30 +424,30 @@ void print_{group_cname}_group_help(void) {{
             dual_help = f"""/**
  * Print dual help for {group_name} (both group and command)
  */
-void print_{group_cname}_dual_help(void) {{
-    r_cons_println("{group_name} - Dual Role Command");
-    r_cons_println("{'=' * (len(group_name) + 19)}");
-    r_cons_println("This command has two roles:");
-    r_cons_println("");
-    r_cons_println("1. As a command group:");
-    r_cons_println("   Contains subcommands for {group_name} operations");
-    r_cons_println("   Use '{group_name}?' to see group help");
-    r_cons_println("");
-    r_cons_println("2. As a specific command:");
-    r_cons_println("   {dual_summary}");
-    r_cons_println("   Use '{group_name}\\?\\?' to see command-specific help");
-    r_cons_println("");
-    r_cons_println("Available commands in {group_name} group:");
-    r_cons_println("{separator}");"""
+void print_{group_cname}_dual_help(RCore *core) {{
+    r_cons_println(core->cons, "{group_name} - Dual Role Command");
+    r_cons_println(core->cons, "{'=' * (len(group_name) + 19)}");
+    r_cons_println(core->cons, "This command has two roles:");
+    r_cons_println(core->cons, "");
+    r_cons_println(core->cons, "1. As a command group:");
+    r_cons_println(core->cons, "   Contains subcommands for {group_name} operations");
+    r_cons_println(core->cons, "   Use '{group_name}?' to see group help");
+    r_cons_println(core->cons, "");
+    r_cons_println(core->cons, "2. As a specific command:");
+    r_cons_println(core->cons, "   {dual_summary}");
+    r_cons_println(core->cons, "   Use '{group_name}\\?\\?' to see command-specific help");
+    r_cons_println(core->cons, "");
+    r_cons_println(core->cons, "Available commands in {group_name} group:");
+    r_cons_println(core->cons, "{separator}");"""
 
             for cmd in sorted(group_commands, key=lambda x: x.get('name', '')):
                 cmd_name = cmd.get('name', '')
                 summary = cmd.get('summary', '').replace('"', '\\"')
-                dual_help += f'\n    r_cons_println("{cmd_name:<12} - {summary}");'
+                dual_help += f'\n    r_cons_println(core->cons, "{cmd_name:<12} - {summary}");'
 
             dual_help += """
-    r_cons_println("");
-    r_cons_println("Use <command>? to get detailed help for a specific command");
+    r_cons_println(core->cons, "");
+    r_cons_println(core->cons, "Use <command>? to get detailed help for a specific command");
 }
 """
             implementations.append(dual_help)
@@ -493,13 +503,13 @@ def generate_dispatchers(
 R_IPI RCmdStatus r_{cname}_dispatcher(RCore* core, int argc, const char** argv) {{
     // Check if this is a help command (ends with ? or ??)
     if (argc > 0 && is_help_command(argv[0])) {{
-        print_{cname}_help();
+        print_{cname}_help(core);
         return R_CMD_STATUS_OK;
     }}
 
     // Validate command arguments
     if (!validate_arguments(core, argc, argv, {required_count}, "{cmd_name}", NULL, NULL)) {{
-        print_{cname}_help();
+        print_{cname}_help(core);
         return R_CMD_STATUS_OK;
     }}
 
@@ -529,9 +539,9 @@ R_IPI RCmdStatus r_{group_cname}_dispatcher(RCore* core, int argc, const char** 
     // Help behavior
     if (argc > 0 && is_help_command(argv[0])) {{
         if (is_double_question_help(argv[0])) {{
-            print_{dual_cname}_help();
+            print_{dual_cname}_help(core);
         }} else {{
-            print_{group_cname}_dual_help();
+            print_{group_cname}_dual_help(core);
         }}
         return R_CMD_STATUS_OK;
     }}
@@ -540,7 +550,7 @@ R_IPI RCmdStatus r_{group_cname}_dispatcher(RCore* core, int argc, const char** 
     if (validate_arguments(core, argc, argv, {required_count}, "{group_name}", NULL, NULL)) {{
         return r_{dual_cname}_handler(core, argc, argv);
     }} else {{
-        print_{dual_cname}_help();
+        print_{dual_cname}_help(core);
         return R_CMD_STATUS_OK;
     }}
 }}
@@ -554,11 +564,11 @@ R_IPI RCmdStatus r_{group_cname}_dispatcher(RCore* core, int argc, const char** 
     (void)core;
 
     if (argc > 0 && is_help_command(argv[0])) {{
-        print_{group_cname}_group_help();
+        print_{group_cname}_group_help(core);
         return R_CMD_STATUS_OK;
     }}
 
-    print_{group_cname}_group_help();
+    print_{group_cname}_group_help(core);
     return R_CMD_STATUS_OK;
 }}
 """
@@ -588,9 +598,9 @@ def generate_global_dispatcher(
         cname = camel_to_snake(dual_data['command']['cname'])
         help_routing.append(f"""    if (strcmp(base_cmd, "{group_name}") == 0) {{
         if (is_double_question_help(argv[0])) {{
-            print_{cname}_help();
+            print_{cname}_help(core);
         }} else {{
-            print_{camel_to_snake(group_name)}_dual_help();
+            print_{camel_to_snake(group_name)}_dual_help(core);
         }}
         free(cmd_copy);
         return R_CMD_STATUS_OK;
@@ -601,7 +611,7 @@ def generate_global_dispatcher(
         if group_name not in dual_role_commands:
             group_cname = camel_to_snake(group_name)
             help_routing.append(f"""    if (strcmp(base_cmd, "{group_name}") == 0) {{
-        print_{group_cname}_group_help();
+        print_{group_cname}_group_help(core);
         free(cmd_copy);
         return R_CMD_STATUS_OK;
     }}""")
@@ -613,7 +623,7 @@ def generate_global_dispatcher(
         if not cname or cmd_name in dual_role_commands or cmd_name in command_groups:
             continue
         help_routing.append(f"""    if (strcmp(base_cmd, "{cmd_name}") == 0) {{
-        print_{cname}_help();
+        print_{cname}_help(core);
         free(cmd_copy);
         return R_CMD_STATUS_OK;
     }}""")
@@ -769,8 +779,8 @@ static bool validate_arguments(RCore* core, int argc, const char** argv, int req
  * General help handler - for backward compatibility
  */
 R_API RCmdStatus r_show_help_handler(RCore* core, int argc, const char** argv) {{
-    (void)core; (void)argc; (void)argv;
-    print_root_help();
+    (void)argc; (void)argv;
+    print_root_help(core);
     return R_CMD_STATUS_OK;
 }}
 
@@ -800,7 +810,7 @@ R_API RCmdStatus reai_global_command_dispatcher(RCore* core, const char* command
 
     // Check for root help
     if (strcmp(argv[0], "RE?") == 0) {{
-        print_root_help();
+        print_root_help(core);
         free(cmd_copy);
         return R_CMD_STATUS_OK;
     }}
@@ -812,7 +822,7 @@ R_API RCmdStatus reai_global_command_dispatcher(RCore* core, const char* command
 {help_routing}
 
         // Fallback if command not found
-        print_root_help();
+        print_root_help(core);
         free(cmd_copy);
         return R_CMD_STATUS_OK;
     }}

@@ -26,6 +26,7 @@
 #include <Plugin.h>
 #include <Reai/Diff.h>
 
+#define R_CMD_STATUS_OK true
 // TODO: restrict to debug symbols only
 
 #define ZSTR_ARG(vn, idx) (argc > (idx) ? (((vn) = argv[idx]), true) : false)
@@ -52,7 +53,7 @@ R_IPI RCmdStatus r_plugin_initialize_handler (RCore* core, int argc, const char*
     ConfigDeinit (&cfg);
 
     ReloadPluginData();
-    r_cons_println ("RevEngAI plugin initialized successfully");
+    r_cons_println (core->cons, "RevEngAI plugin initialized successfully");
 
     return R_CMD_STATUS_OK;
 }
@@ -66,7 +67,7 @@ R_IPI RCmdStatus r_list_available_ai_models_handler (RCore* core, int argc, cons
     (void)argv;
 
     ModelInfos* models = GetModels();
-    VecForeach (models, model, { r_cons_println (model.name.data); });
+    VecForeach (models, model, { r_cons_println (core->cons, model.name.data); });
 
     return R_CMD_STATUS_OK;
 }
@@ -82,9 +83,9 @@ R_IPI RCmdStatus r_health_check_handler (RCore* core, int argc, const char** arg
     (void)argv;
 
     if (!Authenticate (GetConnection())) {
-        r_cons_println ("No connection");
+        r_cons_println (core->cons, "No connection");
     } else {
-        r_cons_println ("OK");
+        r_cons_println (core->cons, "OK");
     }
 
     return R_CMD_STATUS_OK;
@@ -104,8 +105,8 @@ R_IPI RCmdStatus r_upload_bin_handler (RCore* core, int argc, const char** argv)
         Str sha256 = UploadFile (GetConnection(), file_path);
 
         if (sha256.length) {
-            r_cons_printf ("Successfully uploaded file: %s\n", file_path.data);
-            r_cons_printf ("SHA256: %s\n", sha256.data);
+            r_cons_printf (core->cons, "Successfully uploaded file: %s\n", file_path.data);
+            r_cons_printf (core->cons, "SHA256: %s\n", sha256.data);
             StrDeinit (&sha256);
             StrDeinit (&file_path);
             return R_CMD_STATUS_OK;
@@ -268,7 +269,7 @@ R_IPI RCmdStatus r_get_basic_function_info_handler (RCore* core, int argc, const
             return R_CMD_STATUS_OK;
         }
 
-        r_cons_println (table_str);
+        r_cons_println (core->cons, table_str);
 
         FREE (table_str);
         r_table_free (table);
@@ -375,7 +376,7 @@ RCmdStatus
                 });
 
                 const char* table_str = r_table_tofancystring (table);
-                r_cons_println (table_str);
+                r_cons_println (core->cons, table_str);
 
                 FREE (table_str);
                 r_table_free (table);
@@ -560,7 +561,7 @@ R_IPI RCmdStatus r_ai_decompile_handler (RCore* core, int argc, const char** arg
                     });
 
                     // print decompiled code with summary
-                    r_cons_println (code.data);
+                    r_cons_println (core->cons, code.data);
 
                     StrDeinit (&code);
                     AiDecompilationDeinit (&aidec);
@@ -581,7 +582,7 @@ R_IPI RCmdStatus r_ai_decompile_handler (RCore* core, int argc, const char** arg
     }
 }
 
-RCmdStatus collectionSearch (SearchCollectionRequest* search) {
+RCmdStatus collectionSearch (RCore *core, SearchCollectionRequest* search) {
     CollectionInfos collections = SearchCollection (GetConnection(), search);
     SearchCollectionRequestDeinit (search);
 
@@ -614,7 +615,7 @@ RCmdStatus collectionSearch (SearchCollectionRequest* search) {
         });
 
         const char* s = r_table_tofancystring (t);
-        r_cons_println (s);
+        r_cons_println (core->cons, s);
         FREE (s);
         r_table_free (t);
     } else {
@@ -645,7 +646,7 @@ R_IPI RCmdStatus r_collection_search_handler (RCore* core, int argc, const char*
     search.tags = StrSplit (&tags, ",");
     StrDeinit (&tags);
 
-    return collectionSearch (&search);
+    return collectionSearch (core, &search);
 }
 
 R_IPI RCmdStatus
@@ -657,7 +658,7 @@ R_IPI RCmdStatus
     STR_ARG (search.partial_binary_name, 1);
     STR_ARG (search.model_name, 2);
 
-    return collectionSearch (&search);
+    return collectionSearch (core, &search);
 }
 
 R_IPI RCmdStatus
@@ -669,7 +670,7 @@ R_IPI RCmdStatus
     STR_ARG (search.partial_collection_name, 1);
     STR_ARG (search.model_name, 2);
 
-    return collectionSearch (&search);
+    return collectionSearch (core, &search);
 }
 
 /**
@@ -684,10 +685,10 @@ R_IPI RCmdStatus
     STR_ARG (search.partial_binary_sha256, 1);
     STR_ARG (search.model_name, 2);
 
-    return collectionSearch (&search);
+    return collectionSearch (core, &search);
 }
 
-RCmdStatus collectionFilteredSearch (Str term, Str filters, OrderBy order_by, bool is_asc) {
+RCmdStatus collectionFilteredSearch (RCore *core, Str term, Str filters, OrderBy order_by, bool is_asc) {
     SearchCollectionRequest search = SearchCollectionRequestInit();
 
     search.partial_collection_name = term;
@@ -702,7 +703,7 @@ RCmdStatus collectionFilteredSearch (Str term, Str filters, OrderBy order_by, bo
     search.order_by     = order_by;
     search.order_in_asc = is_asc;
 
-    return collectionSearch (&search);
+    return collectionSearch (core, &search);
 }
 
 /**
@@ -715,7 +716,7 @@ R_IPI RCmdStatus
     Str term = StrInit(), filters = StrInit();
     STR_ARG (term, 1);
     STR_ARG (filters, 2);
-    return collectionFilteredSearch (term, filters, ORDER_BY_LAST_UPDATED, true);
+    return collectionFilteredSearch (core, term, filters, ORDER_BY_LAST_UPDATED, true);
 }
 
 /**
@@ -728,7 +729,7 @@ R_IPI RCmdStatus
     Str term = StrInit(), filters = StrInit();
     STR_ARG (term, 1);
     STR_ARG (filters, 2);
-    return collectionFilteredSearch (term, filters, ORDER_BY_OWNER, true);
+    return collectionFilteredSearch (core, term, filters, ORDER_BY_OWNER, true);
 }
 
 /**
@@ -741,7 +742,7 @@ R_IPI RCmdStatus
     Str term = StrInit(), filters = StrInit();
     STR_ARG (term, 1);
     STR_ARG (filters, 2);
-    return collectionFilteredSearch (term, filters, ORDER_BY_NAME, true);
+    return collectionFilteredSearch (core, term, filters, ORDER_BY_NAME, true);
 }
 
 /**
@@ -754,7 +755,7 @@ R_IPI RCmdStatus
     Str term = StrInit(), filters = StrInit();
     STR_ARG (term, 1);
     STR_ARG (filters, 2);
-    return collectionFilteredSearch (term, filters, ORDER_BY_MODEL, true);
+    return collectionFilteredSearch (core, term, filters, ORDER_BY_MODEL, true);
 }
 
 /**
@@ -767,7 +768,7 @@ R_IPI RCmdStatus
     Str term = StrInit(), filters = StrInit();
     STR_ARG (term, 1);
     STR_ARG (filters, 2);
-    return collectionFilteredSearch (term, filters, ORDER_BY_SIZE, true);
+    return collectionFilteredSearch (core, term, filters, ORDER_BY_SIZE, true);
 }
 
 /**
@@ -780,7 +781,7 @@ R_IPI RCmdStatus
     Str term = StrInit(), filters = StrInit();
     STR_ARG (term, 1);
     STR_ARG (filters, 2);
-    return collectionFilteredSearch (term, filters, ORDER_BY_LAST_UPDATED, false);
+    return collectionFilteredSearch (core, term, filters, ORDER_BY_LAST_UPDATED, false);
 }
 
 /**
@@ -793,7 +794,7 @@ R_IPI RCmdStatus
     Str term = StrInit(), filters = StrInit();
     STR_ARG (term, 1);
     STR_ARG (filters, 2);
-    return collectionFilteredSearch (term, filters, ORDER_BY_OWNER, false);
+    return collectionFilteredSearch (core, term, filters, ORDER_BY_OWNER, false);
 }
 
 /**
@@ -806,7 +807,7 @@ R_IPI RCmdStatus
     Str term = StrInit(), filters = StrInit();
     STR_ARG (term, 1);
     STR_ARG (filters, 2);
-    return collectionFilteredSearch (term, filters, ORDER_BY_NAME, false);
+    return collectionFilteredSearch (core, term, filters, ORDER_BY_NAME, false);
 }
 
 /**
@@ -819,7 +820,7 @@ R_IPI RCmdStatus
     Str term = StrInit(), filters = StrInit();
     STR_ARG (term, 1);
     STR_ARG (filters, 2);
-    return collectionFilteredSearch (term, filters, ORDER_BY_MODEL, false);
+    return collectionFilteredSearch (core, term, filters, ORDER_BY_MODEL, false);
 }
 
 /**
@@ -832,10 +833,10 @@ R_IPI RCmdStatus
     Str term = StrInit(), filters = StrInit();
     STR_ARG (term, 1);
     STR_ARG (filters, 2);
-    return collectionFilteredSearch (term, filters, ORDER_BY_SIZE, false);
+    return collectionFilteredSearch (core, term, filters, ORDER_BY_SIZE, false);
 }
 
-RCmdStatus searchBinary (SearchBinaryRequest* search) {
+RCmdStatus searchBinary (RCore *core, SearchBinaryRequest* search) {
     BinaryInfos binaries = SearchBinary (GetConnection(), search);
     SearchBinaryRequestDeinit (search);
 
@@ -867,7 +868,7 @@ RCmdStatus searchBinary (SearchBinaryRequest* search) {
     });
 
     const char* s = r_table_tofancystring (t);
-    r_cons_println (s);
+    r_cons_println (core->cons, s);
     FREE (s);
     r_table_free (t);
 
@@ -891,7 +892,7 @@ R_IPI RCmdStatus r_binary_search_handler (RCore* core, int argc, const char** ar
     STR_ARG (tags, 4);
 
     search.tags = StrSplit (&tags, ",");
-    return searchBinary (&search);
+    return searchBinary (core, &search);
 }
 
 /**
@@ -903,7 +904,7 @@ R_IPI RCmdStatus r_binary_search_by_name_handler (RCore* core, int argc, const c
     SearchBinaryRequest search = SearchBinaryRequestInit();
     STR_ARG (search.partial_name, 1);
     STR_ARG (search.model_name, 3);
-    return searchBinary (&search);
+    return searchBinary (core, &search);
 }
 
 /**
@@ -915,17 +916,17 @@ R_IPI RCmdStatus r_binary_search_by_sha256_handler (RCore* core, int argc, const
     SearchBinaryRequest search = SearchBinaryRequestInit();
     STR_ARG (search.partial_sha256, 1);
     STR_ARG (search.model_name, 3);
-    return searchBinary (&search);
+    return searchBinary (core, &search);
 }
 
-RCmdStatus openLinkForId (const char* type, u64 id) {
+RCmdStatus openLinkForId (RCore *core, const char* type, u64 id) {
     Connection* conn = GetConnection();
 
     Str host = StrDup (&conn->host);
     StrReplaceZstr (&host, "api", "portal", 1);
     StrAppendf (&host, "/%s/%llu", type, id);
 
-    r_cons_println (host.data);
+    r_cons_println (core->cons, host.data);
 
     const char* syscmd = NULL;
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
@@ -963,7 +964,7 @@ R_IPI RCmdStatus r_collection_link_handler (RCore* core, int argc, const char** 
         return R_CMD_STATUS_WRONG_ARGS;
     }
 
-    return openLinkForId ("collection", cid);
+    return openLinkForId (core, "collection", cid);
 }
 
 /**
@@ -985,7 +986,7 @@ R_IPI RCmdStatus r_analysis_link_handler (RCore* core, int argc, const char** ar
         }
     }
 
-    return openLinkForId ("analyses", bid);
+    return openLinkForId (core, "analyses", bid);
 }
 
 /**
@@ -998,7 +999,7 @@ R_IPI RCmdStatus r_function_link_handler (RCore* core, int argc, const char** ar
         return R_CMD_STATUS_WRONG_ARGS;
     }
 
-    return openLinkForId ("collection", fid);
+    return openLinkForId (core, "collection", fid);
 }
 
 /**
@@ -1027,7 +1028,7 @@ R_IPI RCmdStatus
 
     Str logs = GetAnalysisLogs (GetConnection(), analysis_id);
     if (logs.length) {
-        r_cons_println (logs.data);
+        r_cons_println (core->cons, logs.data);
     } else {
         DISPLAY_ERROR ("Failed to get analysis logs.");
         return R_CMD_STATUS_WRONG_ARGS;
@@ -1063,7 +1064,7 @@ R_IPI RCmdStatus
 
     Str logs = GetAnalysisLogs (GetConnection(), analysis_id);
     if (logs.length) {
-        r_cons_println (logs.data);
+        r_cons_println (core->cons, logs.data);
     } else {
         DISPLAY_ERROR (
             "Failed to get analysis logs. Please check your internet connection, and plugin log "
@@ -1122,7 +1123,7 @@ R_IPI RCmdStatus r_get_recent_analyses_handler (RCore* core, int argc, const cha
     });
 
     const char* s = r_table_tofancystring (t);
-    r_cons_println (s);
+    r_cons_println (core->cons, s);
     FREE (s);
     r_table_free (t);
 
@@ -1752,7 +1753,7 @@ bool drawConfirmationDialog (RConsCanvas* c, int w, int h, const char* message) 
     return true;
 }
 
-bool drawRenameDialog (RConsCanvas* c, int w, int h, const char* initial_name, Str* target_name) {
+bool drawRenameDialog (RCore *core, RConsCanvas* c, int w, int h, const char* initial_name, Str* target_name) {
     // Calculate center position for dialog box
     int box_width  = 70;
     int box_height = 10;
@@ -1813,10 +1814,10 @@ bool drawRenameDialog (RConsCanvas* c, int w, int h, const char* initial_name, S
 
         // Print and flush
         r_cons_canvas_print (c);
-        r_cons_flush();
+        r_cons_flush(core->cons);
 
         // Handle input
-        int ch = r_cons_readchar();
+        int ch = r_cons_readchar(core->cons);
 
         switch (ch) {
             case 13 : // Enter key
@@ -1886,6 +1887,7 @@ bool drawRenameDialog (RConsCanvas* c, int w, int h, const char* initial_name, S
 }
 
 RConsCanvas* drawInteractiveDiff (
+    RCore         *core,
     RConsCanvas*   c,
     const char*    list_header,
     const char*    source_header,
@@ -1896,11 +1898,11 @@ RConsCanvas* drawInteractiveDiff (
     bool           show_line_numbers
 ) {
     // get terminal size
-    int h, w = r_cons_get_size (&h);
+    int h, w = r_cons_get_size (core->cons, &h);
 
     // if canvas is not created then create
     if (c == NULL) {
-        c = r_cons_canvas_new (w, h);
+        c = r_cons_canvas_new (core->cons, w, h, 0);
     }
 
     // resize canvas on windows resize
@@ -1909,7 +1911,7 @@ RConsCanvas* drawInteractiveDiff (
     }
 
     // create canvas
-    r_cons_canvas_clear (c);
+    r_cons_canvas_clear (c, 0);
 
     if (!drawInteractiveList (c, list_header, w, h, items, selected_idx)) {
         return NULL;
@@ -1926,7 +1928,7 @@ RConsCanvas* drawInteractiveDiff (
     }
 
     r_cons_canvas_print (c);
-    r_cons_flush();
+    r_cons_flush(core->cons);
 
     return c;
 }
@@ -2093,6 +2095,7 @@ R_IPI RCmdStatus r_function_assembly_diff_handler (RCore* core, int argc, const 
     }
 
     r_cons_printf (
+        core->cons,
         "Found %zu similar functions for '%s' (>= %u%% similarity)\n",
         similar_functions.length,
         function_name,
@@ -2145,6 +2148,7 @@ R_IPI RCmdStatus r_function_assembly_diff_handler (RCore* core, int argc, const 
 
     // Create initial canvas
     RConsCanvas* c = drawInteractiveDiff (
+        core,
         NULL,
         "SIMILAR FUNCTIONS",
         "SOURCE",
@@ -2200,11 +2204,11 @@ R_IPI RCmdStatus r_function_assembly_diff_handler (RCore* core, int argc, const 
                 case 'h' : // Help
                 case '?' : {
                     // Get current terminal size
-                    int help_h, help_w = r_cons_get_size (&help_h);
+                    int help_h, help_w = r_cons_get_size (core->cons, &help_h);
 
                     // Lazy initialization - create help canvas only once
                     if (!help_canvas) {
-                        help_canvas = r_cons_canvas_new (help_w, help_h);
+                        help_canvas = r_cons_canvas_new (core->cons, help_w, help_h, 0);
 
                         // Calculate center position for help box
                         int box_width  = 60;
@@ -2212,7 +2216,7 @@ R_IPI RCmdStatus r_function_assembly_diff_handler (RCore* core, int argc, const 
                         int box_x      = (help_w - box_width) / 2;
                         int box_y      = (help_h - box_height) / 2;
 
-                        r_cons_canvas_clear (help_canvas);
+                        r_cons_canvas_clear (help_canvas, 0);
 
                         // Draw the help box (only once)
                         r_cons_canvas_box (
@@ -2310,15 +2314,15 @@ R_IPI RCmdStatus r_function_assembly_diff_handler (RCore* core, int argc, const 
                     }
 
                     r_cons_canvas_print (help_canvas);
-                    r_cons_flush();
-                    r_cons_readchar();
+                    r_cons_flush (core->cons);
+                    r_cons_readchar (core->cons);
                     need_redraw = true;
                 } break;
 
                 case 'r' : // Rename
                 case 'R' : {
                     // Get current terminal size
-                    int rename_h, rename_w = r_cons_get_size (&rename_h);
+                    int rename_h, rename_w = r_cons_get_size (core->cons, &rename_h);
 
                     // Get target function name (extract from display name)
                     current_item    = VecPtrAt (&items, selected_idx);
@@ -2344,7 +2348,7 @@ R_IPI RCmdStatus r_function_assembly_diff_handler (RCore* core, int argc, const 
                     }
 
                     // Show rename dialog first - pass pointer to target_name
-                    if (drawRenameDialog (c, rename_w, rename_h, target_name.data, &target_name)) {
+                    if (drawRenameDialog (core, c, rename_w, rename_h, target_name.data, &target_name)) {
                         // User confirmed with Enter, now ask for final confirmation
                         Str confirm_message = StrInit();
                         StrPrintf (
@@ -2356,12 +2360,12 @@ R_IPI RCmdStatus r_function_assembly_diff_handler (RCore* core, int argc, const 
 
                         drawConfirmationDialog (c, rename_w, rename_h, confirm_message.data);
                         r_cons_canvas_print (c);
-                        r_cons_flush();
+                        r_cons_flush (core->cons);
 
                         // Wait for y/n response
-                        int confirm_ch = r_cons_readchar();
+                        int confirm_ch = r_cons_readchar (core->cons);
                         if (confirm_ch == 'y' || confirm_ch == 'Y') {
-                            r_cons_printf (
+                            r_cons_printf (core->cons,
                                 "Renaming function '%s' to '%s'...\n",
                                 function_name,
                                 target_name.data
@@ -2375,13 +2379,13 @@ R_IPI RCmdStatus r_function_assembly_diff_handler (RCore* core, int argc, const 
                                     r_anal_get_function_byname (core->anal, function_name),
                                     target_name.data
                                 );
-                                r_cons_printf (
+                                r_cons_printf (core->cons,
                                     "Successfully renamed function '%s' to '%s'\n",
                                     function_name,
                                     target_name.data
                                 );
                             } else {
-                                r_cons_printf (
+                                r_cons_printf (core->cons,
                                     "Failed to rename function '%s' to '%s'\n",
                                     function_name,
                                     target_name.data
@@ -2390,7 +2394,7 @@ R_IPI RCmdStatus r_function_assembly_diff_handler (RCore* core, int argc, const 
 
                             StrDeinit (&old_name_str);
 
-                            r_cons_flush();
+                            r_cons_flush (core->cons);
                             r_sys_sleep (2); // Show result for 2 seconds
                         }
                         // If user pressed 'n', do nothing (cancelled)
@@ -2420,6 +2424,7 @@ R_IPI RCmdStatus r_function_assembly_diff_handler (RCore* core, int argc, const 
 
             if (need_redraw) {
                 if (!drawInteractiveDiff (
+                        core,
                         c,
                         "SIMILAR FUNCTIONS",
                         "SOURCE",
@@ -2429,7 +2434,7 @@ R_IPI RCmdStatus r_function_assembly_diff_handler (RCore* core, int argc, const 
                         &diff,
                         false
                     )) {
-                    r_cons_canvas_free (c);
+                    r_cons_canvas_free (c) ;
                     c = NULL;
                     break;
                 }
@@ -2437,20 +2442,16 @@ R_IPI RCmdStatus r_function_assembly_diff_handler (RCore* core, int argc, const 
         }
 
         // Wait for actual user input (blocking)
-        ch = r_cons_readchar();
+        ch = r_cons_readchar (core->cons);
     }
 
 cleanup:
     // Cleanup
-    if (c) {
-        r_cons_canvas_free (c);
-    }
+    r_cons_canvas_free (c);
 
     // Lazy cleanup - free help canvas only at exit
-    if (help_canvas) {
-        r_cons_canvas_free (help_canvas);
-        help_canvas = NULL;
-    }
+    r_cons_canvas_free (help_canvas);
+    help_canvas = NULL;
 
     VecDeinit (&diff);
     StrDeinit (&src);
@@ -2566,7 +2567,7 @@ R_IPI RCmdStatus r_function_decompilation_diff_handler (RCore* core, int argc, c
         return R_CMD_STATUS_OK;
     }
 
-    r_cons_printf (
+    r_cons_printf (core->cons,
         "Found %llu similar functions for '%s' (>= %u%% similarity)\n",
         (u64)similar_functions.length,
         function_name,
@@ -2622,6 +2623,7 @@ R_IPI RCmdStatus r_function_decompilation_diff_handler (RCore* core, int argc, c
 
     // Create initial canvas
     RConsCanvas* c = drawInteractiveDiff (
+        core,
         NULL,
         "SIMILAR FUNCTIONS",
         "SOURCE DECOMPILATION",
@@ -2677,11 +2679,11 @@ R_IPI RCmdStatus r_function_decompilation_diff_handler (RCore* core, int argc, c
                 case 'h' : // Help
                 case '?' : {
                     // Get current terminal size
-                    int help_h, help_w = r_cons_get_size (&help_h);
+                    int help_h, help_w = r_cons_get_size (core->cons, &help_h);
 
                     // Lazy initialization - create help canvas only once
                     if (!help_canvas) {
-                        help_canvas = r_cons_canvas_new (help_w, help_h);
+                        help_canvas = r_cons_canvas_new (core->cons, help_w, help_h, 0);
 
                         // Calculate center position for help box
                         int box_width  = 60;
@@ -2689,7 +2691,7 @@ R_IPI RCmdStatus r_function_decompilation_diff_handler (RCore* core, int argc, c
                         int box_x      = (help_w - box_width) / 2;
                         int box_y      = (help_h - box_height) / 2;
 
-                        r_cons_canvas_clear (help_canvas);
+                        r_cons_canvas_clear (help_canvas, 0);
 
                         // Draw the help box (only once)
                         r_cons_canvas_box (
@@ -2787,15 +2789,15 @@ R_IPI RCmdStatus r_function_decompilation_diff_handler (RCore* core, int argc, c
                     }
 
                     r_cons_canvas_print (help_canvas);
-                    r_cons_flush();
-                    r_cons_readchar();
+                    r_cons_flush(core->cons);
+                    r_cons_readchar(core->cons);
                     need_redraw = true;
                 } break;
 
                 case 'r' : // Rename
                 case 'R' : {
                     // Get current terminal size
-                    int rename_h, rename_w = r_cons_get_size (&rename_h);
+                    int rename_h, rename_w = r_cons_get_size (core->cons, &rename_h);
 
                     // Get target function name (extract from display name)
                     current_item    = VecPtrAt (&items, selected_idx);
@@ -2821,7 +2823,7 @@ R_IPI RCmdStatus r_function_decompilation_diff_handler (RCore* core, int argc, c
                     }
 
                     // Show rename dialog first - pass pointer to target_name
-                    if (drawRenameDialog (c, rename_w, rename_h, target_name.data, &target_name)) {
+                    if (drawRenameDialog (core, c, rename_w, rename_h, target_name.data, &target_name)) {
                         // User confirmed with Enter, now ask for final confirmation
                         Str confirm_message = StrInit();
                         StrPrintf (
@@ -2833,12 +2835,12 @@ R_IPI RCmdStatus r_function_decompilation_diff_handler (RCore* core, int argc, c
 
                         drawConfirmationDialog (c, rename_w, rename_h, confirm_message.data);
                         r_cons_canvas_print (c);
-                        r_cons_flush();
+                        r_cons_flush(core->cons);
 
                         // Wait for y/n response
-                        int confirm_ch = r_cons_readchar();
+                        int confirm_ch = r_cons_readchar(core->cons);
                         if (confirm_ch == 'y' || confirm_ch == 'Y') {
-                            r_cons_printf (
+                            r_cons_printf (core->cons,
                                 "Renaming function '%s' to '%s'...\n",
                                 function_name,
                                 target_name.data
@@ -2852,13 +2854,13 @@ R_IPI RCmdStatus r_function_decompilation_diff_handler (RCore* core, int argc, c
                                     r_anal_get_function_byname (core->anal, function_name),
                                     target_name.data
                                 );
-                                r_cons_printf (
+                                r_cons_printf (core->cons,
                                     "Successfully renamed function '%s' to '%s'\n",
                                     function_name,
                                     target_name.data
                                 );
                             } else {
-                                r_cons_printf (
+                                r_cons_printf (core->cons,
                                     "Failed to rename function '%s' to '%s'\n",
                                     function_name,
                                     target_name.data
@@ -2867,7 +2869,7 @@ R_IPI RCmdStatus r_function_decompilation_diff_handler (RCore* core, int argc, c
 
                             StrDeinit (&old_name_str);
 
-                            r_cons_flush();
+                            r_cons_flush(core->cons);
                             r_sys_sleep (2); // Show result for 2 seconds
                         }
                         // If user pressed 'n', do nothing (cancelled)
@@ -2897,6 +2899,7 @@ R_IPI RCmdStatus r_function_decompilation_diff_handler (RCore* core, int argc, c
 
             if (need_redraw) {
                 if (!(c = drawInteractiveDiff (
+                          core,
                           c,
                           "SIMILAR FUNCTIONS",
                           "SOURCE DECOMPILATION",
@@ -2914,14 +2917,12 @@ R_IPI RCmdStatus r_function_decompilation_diff_handler (RCore* core, int argc, c
         }
 
         // Wait for actual user input (blocking)
-        ch = r_cons_readchar();
+        ch = r_cons_readchar(core->cons);
     }
 
 cleanup:
     // Cleanup
-    if (c) {
-        r_cons_canvas_free (c);
-    }
+    r_cons_canvas_free (c);
 
     // Lazy cleanup - free help canvas only at exit
     if (help_canvas) {
@@ -2952,7 +2953,7 @@ R_IPI RCmdStatus r_show_revengai_art_handler (RCore* core, int argc, const char*
     (void)argc;
     (void)argv;
 
-    r_cons_println (
+    r_cons_println (core->cons,
         "\n"
         "\n"
         ":::::::::::        :::::::::::\n"

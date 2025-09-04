@@ -8,6 +8,7 @@
 // radare
 #include <r_core.h>
 #include <r_util.h>
+#include <r_cmd.h>
 
 // plugin
 #include <Radare/CmdDesc.h>
@@ -45,7 +46,8 @@ void rDisplayMsg (LogLevel level, Str *msg) {
     }
 
     rAppendMsg (level, msg);
-    r_cons_println (getMsg()->data);
+    // Output aggregated message via standard logging
+    LOG_INFO ("%s", getMsg()->data);
     StrClear (getMsg());
 }
 
@@ -120,13 +122,10 @@ static int reai_on_fcn_rename (
     }
 }
 
-int reai_r2_core_init (void *user, const char *cmd) {
-    (void)cmd;
-
+bool reai_r2_core_init (RCorePluginSession *cps) {
     LogInit (true);
 
-    RCmd  *rcmd = (RCmd *)user;
-    RCore *core = (RCore *)rcmd->data;
+    RCore *core = cps ? cps->core : NULL;
 
     if (!core) {
         DISPLAY_ERROR ("Invalid radare core provided. Cannot initialize plugin.");
@@ -158,15 +157,13 @@ int reai_r2_core_init (void *user, const char *cmd) {
     return true;
 }
 
-int reai_r2_core_fini (void *user, const char *cmd) {
-    (void)user;
-    (void)cmd;
-
+bool reai_r2_core_fini (RCorePluginSession *cps) {
+    (void)cps;
     return true;
 }
 
-int reai_r2_core_cmd (void *user, const char *input) {
-    RCore *core = (RCore *)user;
+bool reai_r2_core_cmd (RCorePluginSession *cps, const char *input) {
+    RCore *core = cps->core;
 
     // Check if this is a RevEngAI command
     if (!r_str_startswith (input, "RE")) {
@@ -174,10 +171,7 @@ int reai_r2_core_cmd (void *user, const char *input) {
     }
 
     // Use the global dispatcher to handle the command
-    RCmdStatus status = reai_global_command_dispatcher (core, input);
-
-    // Always return true for our commands, even if they fail
-    return status == R_CMD_STATUS_OK;
+    return reai_global_command_dispatcher (core, input);
 }
 
 RCorePlugin r_core_plugin_reai = {
